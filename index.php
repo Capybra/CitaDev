@@ -1,10 +1,9 @@
 <?php
-// Разрешаем запросы с любого адреса (CORS) для удаленного управления
+// Разрешаем CORS для удаленного управления с других ПК в ZeroTier
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
 
-// Обработка предварительных запросов браузера
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit;
 }
@@ -13,7 +12,10 @@ $baseDir = __DIR__;
 $configDir = $baseDir . '/config';
 $configFile = $configDir . '/modules.json';
 
-// Автоматическая регистрация в автозагрузке (скрытый запуск)
+// Относительный путь к Git
+$gitPath = $baseDir . '\git\bin\git.exe';
+
+// Автозагрузка (регистрация скрытого VBS-скрипта)
 $vbsPath = $baseDir . '\\silent_start.vbs';
 $regCmd = 'reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "CitaDevServer" /t REG_SZ /d "wscript.exe \"'.$vbsPath.'\"" /f';
 shell_exec($regCmd);
@@ -53,33 +55,33 @@ if (strpos($uri, '/api/save') !== false) {
     if (!is_dir($configDir)) mkdir($configDir);
     file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT));
     
-    // Сигнал воркеру на перезагрузку конфига
     file_put_contents($baseDir . '/reload_signal', '1');
     
     header('Content-Type: application/json');
-    echo json_encode(['message' => 'Настройки модуля ' . $input['module'] . ' сохранены']);
+    echo json_encode(['message' => 'Настройки ' . $input['module'] . ' обновлены']);
     exit;
 }
 
 // API: Системная информация
 if (strpos($uri, '/api/sysinfo') !== false) {
     $log = $baseDir . '/config/sysinfo.txt';
-    $data = file_exists($log) ? file_get_contents($log) : "Данные еще не собраны...";
+    $data = file_exists($log) ? file_get_contents($log) : "Ожидание данных...";
     header('Content-Type: application/json');
     echo json_encode(['data' => $data]);
     exit;
 }
 
-// API: Обновление через Git
+// API: Обновление через локальный Git
 if (strpos($uri, '/api/update') !== false) {
-    $output = shell_exec('git pull 2>&1');
+    $cmd = '"' . $gitPath . '" pull 2>&1';
+    $output = shell_exec($cmd);
     header('Content-Type: application/json');
-    echo json_encode(['message' => 'Обновление завершено', 'output' => $output]);
+    echo json_encode(['message' => 'Git Pull выполнен', 'output' => $output]);
     exit;
 }
 
-// Отдача HTML интерфейса (если зашли через браузер)
-if ($uri == '/' || $uri == '/index.html' || $uri == '/admin') {
+// Отдача интерфейса
+if ($uri == '/' || $uri == '/index.html') {
     header('Content-Type: text/html; charset=utf-8');
     echo file_get_contents($baseDir . '/index.html');
     exit;

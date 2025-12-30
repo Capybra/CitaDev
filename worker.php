@@ -1,53 +1,61 @@
 <?php
 /**
  * CitaDev Worker Core
+ * Работает в фоновом режиме, управляет модулями.
  */
-set_time_limit(0); // Убираем лимит времени выполнения
-echo "[".date('H:i:s')."] Worker Core Started...\n";
 
 $baseDir = __DIR__;
-$modulesDir = $baseDir . '/modules';
+
+// --- НАСТРОЙКА ОКРУЖЕНИЯ (Относительные пути) ---
+// Добавляем локальные папки php и git в PATH текущего процесса
+$localBin = $baseDir . '\php;' . $baseDir . '\git\bin;' . $baseDir . '\git\cmd;';
+putenv("PATH=" . $localBin . getenv("PATH"));
+
+require_once $baseDir . '/modules/BaseModule.php';
+
+echo "[" . date('H:i:s') . "] Worker Core Started (Relative Paths Active)\n";
+
+$modules = [];
 $configFile = $baseDir . '/config/modules.json';
 
-// Подгружаем базовый класс один раз
-if (file_exists($modulesDir . '/BaseModule.php')) {
-    require_once $modulesDir . '/BaseModule.php';
+function loadModules($configFile, $baseDir) {
+    $config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
+    $instances = [];
+    
+    foreach (glob($baseDir . '/modules/*.php') as $filename) {
+        if (basename($filename) === 'BaseModule.php') continue;
+        require_once $filename;
+        $className = pathinfo($filename, PATHINFO_FILENAME);
+        
+        if (class_exists($className)) {
+            $modConfig = $config[$className] ?? ['enabled' => false];
+            $instances[] = new $className($modConfig);
+        }
+    }
+    return $instances;
 }
 
+// Начальная загрузка
+$modules = loadModules($configFile, $baseDir);
+
 while (true) {
-    // 1. Проверка сигнала на обновление настроек
+    // Проверка сигнала на перезагрузку конфига (если сохранили в API)
     if (file_exists($baseDir . '/reload_signal')) {
-        echo "[INFO] Настройки изменены клиентом. Применяю...\n";
+        echo "[" . date('H:i:s') . "] Reloading module configurations...\n";
+        $modules = loadModules($configFile, $baseDir);
         unlink($baseDir . '/reload_signal');
     }
 
-    // 2. Чтение конфигурации
-    $config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
-
-    // 3. Запуск активных модулей
-    foreach (glob($modulesDir . '/*.php') as $file) {
-        $className = basename($file, '.php');
-        if ($className === 'BaseModule') continue;
-
-        // Проверяем, включен ли модуль в настройках
-        if (isset($config[$className]['enabled']) && $config[$className]['enabled'] == true) {
+    foreach ($modules as $module) {
+        if ($module->isEnabled()) {
             try {
-                require_once $file;
-                if (class_exists($className)) {
-                    $module = new $className();
-                    $module->setConfig($config[$className]);
-                    
-                    // Выполнение задачи модуля
-                    $module->run(); 
-                }
-            } catch (Error $e) {
-                echo "[FATAL ERROR] В модуле $className: " . $e->getMessage() . "\n";
+                $module->run();
             } catch (Exception $e) {
-                echo "[ERROR] В модуле $className: " . $e->getMessage() . "\n";
+                echo "Error in module " . get_class($module) . ": " . $e->getMessage() . "\n";
             }
         }
     }
 
-    // Пауза 2 секунды, чтобы не перегружать CPU
-    sleep(2);
+    // Пауза между итерациями (например, 5 секунд)
+    sleep(5);
 }
