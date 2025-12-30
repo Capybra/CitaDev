@@ -1,5 +1,5 @@
 <?php
-// Разрешаем CORS для удаленного управления с других ПК в ZeroTier
+// --- НАСТРОЙКИ БЕЗОПАСНОСТИ (CORS) ---
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
@@ -8,14 +8,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit;
 }
 
+// --- ПУТИ ---
 $baseDir = __DIR__;
 $configDir = $baseDir . '/config';
 $configFile = $configDir . '/modules.json';
+$gitPath = $baseDir . '\git\bin\git.exe'; // Относительный путь к портативному Git
 
-// Относительный путь к Git
-$gitPath = $baseDir . '\git\bin\git.exe';
-
-// Автозагрузка (регистрация скрытого VBS-скрипта)
+// Автозагрузка сервера (скрытая)
 $vbsPath = $baseDir . '\\silent_start.vbs';
 $regCmd = 'reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "CitaDevServer" /t REG_SZ /d "wscript.exe \"'.$vbsPath.'\"" /f';
 shell_exec($regCmd);
@@ -55,32 +54,41 @@ if (strpos($uri, '/api/save') !== false) {
     if (!is_dir($configDir)) mkdir($configDir);
     file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT));
     
+    // Сигнал воркеру на обновление настроек
     file_put_contents($baseDir . '/reload_signal', '1');
     
     header('Content-Type: application/json');
-    echo json_encode(['message' => 'Настройки ' . $input['module'] . ' обновлены']);
+    echo json_encode(['message' => 'Настройки модуля ' . $input['module'] . ' сохранены']);
     exit;
 }
 
-// API: Системная информация
+// API: Системная информация (Исправлено чтение файла)
 if (strpos($uri, '/api/sysinfo') !== false) {
-    $log = $baseDir . '/config/sysinfo.txt';
-    $data = file_exists($log) ? file_get_contents($log) : "Ожидание данных...";
+    $logFile = $configDir . '/sysinfo.txt';
+    $data = "Ожидание данных...";
+
+    if (file_exists($logFile)) {
+        $content = file_get_contents($logFile);
+        if (!empty(trim($content))) {
+            $data = $content;
+        }
+    }
+    
     header('Content-Type: application/json');
     echo json_encode(['data' => $data]);
     exit;
 }
 
-// API: Обновление через локальный Git
+// API: Обновление через Git
 if (strpos($uri, '/api/update') !== false) {
     $cmd = '"' . $gitPath . '" pull 2>&1';
     $output = shell_exec($cmd);
     header('Content-Type: application/json');
-    echo json_encode(['message' => 'Git Pull выполнен', 'output' => $output]);
+    echo json_encode(['message' => 'Обновление завершено', 'output' => $output]);
     exit;
 }
 
-// Отдача интерфейса
+// Отдача фронтенда
 if ($uri == '/' || $uri == '/index.html') {
     header('Content-Type: text/html; charset=utf-8');
     echo file_get_contents($baseDir . '/index.html');
