@@ -75,10 +75,14 @@ if ($uri == '/api/update') {
     echo json_encode([
         'status' => 'success',
         'output' => $output ?: 'Git pull executed',
-        'message' => 'Система перезагрузится через 3 секунды.'
+        'message' => 'Система перезагрузится...'
     ]);
-    pclose(popen('start /b cmd /c "timeout /t 3 && taskkill /F /IM php.exe /T"', "r"));
+
+    // Используем скрипт, который мягко убивает процессы без конфликта дескрипторов
+    $killCmd = 'timeout /t 3 && taskkill /F /IM php.exe /T';
+    file_put_contents($baseDir . '/kill.bat', $killCmd);
+    
+    // Запускаем bat-киллер отдельно от текущего процесса
+    pclose(popen('start /b "" cmd /c "' . $baseDir . '\\kill.bat"', "r"));
     exit;
 }
-
-echo json_encode(['status' => 'online', 'system' => 'CitaDev Core']);

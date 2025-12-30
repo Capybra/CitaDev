@@ -2,5 +2,9 @@
     "SystemInfo": {
         "enabled": false,
         "info_level": "short"
+    },
+    "ProcessKiller": {
+        "enabled": false,
+        "process_list": "javaw.exe, discord.exe"
     }
 }
