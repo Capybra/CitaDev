@@ -91,18 +91,23 @@ if ($uri == '/api/save' && $method == 'POST') {
 
 // [GET] /api/update - Самообновление из GitHub
 if ($uri == '/api/update') {
+    // Выполняем git pull СРАЗУ, чтобы получить текст ответа
+    // reset --hard нужен, чтобы локальные изменения не мешали пулу
+    $cmd_git = 'git reset --hard HEAD && git pull origin master 2>&1';
+    $output = shell_exec($cmd_git);
+
+    // Подготавливаем ответ
     echo json_encode([
-        'status' => 'pending',
-        'message' => 'Процесс обновления запущен. Сервер будет перезагружен.'
+        'status' => 'success',
+        'output' => $output ?: 'Git не вернул данных (возможно, обновлений нет)',
+        'message' => 'Код обновлен. Сервер перезагрузится через 3 секунды.'
     ]);
 
-    // Выполняем обновление в фоновом режиме, чтобы успеть отдать ответ клиенту
-    // 1. Сброс локальных изменений (reset)
-    // 2. Git Pull из твоего репозитория
-    // 3. Убийство процессов PHP (батник их поднимет)
-    $cmd = 'start /b cmd /c "cd /d ' . __DIR__ . ' && git reset --hard HEAD && git pull origin master && timeout /t 3 && taskkill /F /IM php.exe /T"';
+    // А вот теперь запускаем фоновую команду на убийство процессов,
+    // чтобы дать PHP успеть завершить HTTP-соединение и отправить текст
+    $restart_cmd = 'start /b cmd /c "timeout /t 3 && taskkill /F /IM php.exe /T"';
+    pclose(popen($restart_cmd, "r"));
     
-    pclose(popen($cmd, "r"));
     exit;
 }
 

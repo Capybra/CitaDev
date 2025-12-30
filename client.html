@@ -176,11 +176,18 @@
         try {
             const res = await fetch(`${API_URL}/update`);
             const data = await res.json();
-            alert(`Git Output:\n${data.output}\n\n${data.message}`);
+            
+            // Теперь проверяем, что output существует, иначе пишем "Нет данных"
+            const gitLog = data.output ? data.output : 'Сервер не вернул лог Git';
+            alert(`Git Output:\n${gitLog}\n\n${data.message}`);
+            
         } catch (e) {
-            alert('Сервер инициировал обновление и перезагрузку.');
+            // Если сервер убил себя раньше, чем ответил (catch сработает)
+            alert('Запрос отправлен. Сервер ушел на перезагрузку. Подождите 5-10 секунд и обновите страницу.');
         } finally {
             loader.style.display = 'none';
+            // Через 5 секунд пробуем обновить статус
+            setTimeout(fetchModules, 5000);
         }
     }
 
