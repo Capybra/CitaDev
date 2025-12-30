@@ -1,33 +1,39 @@
-# Проверка прав администратора
-if (!([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "!!! ЗАПУСТИТЕ ОТ ИМЕНИ АДМИНИСТРАТОРА !!!" -ForegroundColor Red
-    pause
-    exit
-}
-
-# Определяем путь к папке проекта и к папке PHP внутри него
+# Получаем путь к папке, где лежит сам скрипт
 $projectDir = Get-Location
 $localPhpDir = Join-Path $projectDir "php"
+$localGitDir = Join-Path $projectDir "git\cmd"
 
-if (-not (Test-Path (Join-Path $localPhpDir "php.exe"))) {
-    Write-Host "Ошибка: Файл $localPhpDir\php.exe не найден!" -ForegroundColor Red
+Write-Host "--- Настройка портативного окружения CitaDev ---" -ForegroundColor Cyan
+
+# Проверка наличия папок
+if (!(Test-Path $localPhpDir) -or !(Test-Path $localGitDir)) {
+    Write-Host "Ошибка: Папки php или git\cmd не найдены в текущей директории!" -ForegroundColor Red
     pause
     exit
 }
-
-Write-Host "Регистрируем локальный PHP в системе..." -ForegroundColor Cyan
 
 # Получаем текущий PATH
 $oldPath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+$currentPathArray = $oldPath -split ';'
 
-# Добавляем путь, если его еще нет
-if ($oldPath -notlike "*$localPhpDir*") {
-    $newPath = $oldPath.TrimEnd(';') + ";" + $localPhpDir
-    [Environment]::SetEnvironmentVariable("Path", $newPath, "Machine")
-    Write-Host "[+] Успешно добавлено: $localPhpDir" -ForegroundColor Green
-} else {
-    Write-Host "[!] Этот путь уже есть в PATH" -ForegroundColor Yellow
+# Добавляем пути, если их еще нет
+$newPaths = @($localPhpDir, $localGitDir)
+$updated = $false
+
+foreach ($path in $newPaths) {
+    if ($currentPathArray -notcontains $path) {
+        $oldPath = $oldPath.TrimEnd(';') + ";" + $path
+        $updated = $true
+        Write-Host "[+] Добавлено в PATH: $path" -ForegroundColor Green
+    }
 }
 
-Write-Host "Готово. Теперь команда 'php' будет использовать версию из папки проекта." -ForegroundColor White
+if ($updated) {
+    [Environment]::SetEnvironmentVariable("Path", $oldPath, "Machine")
+    Write-Host "PATH успешно обновлен." -ForegroundColor Yellow
+} else {
+    Write-Host "Пути уже были настроены ранее." -ForegroundColor Gray
+}
+
+Write-Host "Настройка завершена. Теперь можно запускать start.bat." -ForegroundColor White
 pause

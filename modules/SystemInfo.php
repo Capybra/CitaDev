@@ -1,34 +1,46 @@
 <?php
-// modules/SystemInfo.php
 require_once 'BaseModule.php';
 
 class SystemInfo extends BaseModule {
-    
-    // Описываем настройки, чтобы клиент знал, что рисовать
+
     public function getConfigSchema(): array {
         return [
-            'interval' => [
-                'type' => 'number', 
-                'default' => 5, 
-                'label' => 'Интервал обновления (сек)'
-            ],
-            'message' => [
-                'type' => 'text', 
-                'default' => 'System OK', 
-                'label' => 'Префикс лога'
+            'info_level' => [
+                'type' => 'text',
+                'default' => 'full',
+                'label' => 'Детализация (short/full)'
             ]
         ];
     }
 
     public function run() {
-        // Логика модуля
-        $interval = $this->config['interval'] ?? 5;
-        $msg = $this->config['message'] ?? 'Default';
-        
-        echo "[{$msg}] Модуль работает... Время: " . date('H:i:s') . "\n";
-        
-        // В реальном модуле тут не должно быть sleep, если мы хотим асинхронность,
-        // но для простой версии worker.php это допустимо.
-        sleep($interval); 
+        echo "[SystemInfo] Сбор данных о железе...\n";
+
+        // Собираем данные через WMIC (стандартная утилита Windows)
+        $cpu = $this->getCmdOutput('wmic cpu get name');
+        $gpu = $this->getCmdOutput('wmic path win32_VideoController get name');
+        $ram = $this->getCmdOutput('wmic computersystem get totalphysicalmemory');
+
+        // Преобразуем RAM в ГБ
+        $ramGb = 0;
+        if (preg_match('/\d+/', $ram, $matches)) {
+            $ramGb = round($matches[0] / (1024 * 1024 * 1024), 2);
+        }
+
+        $output = "--- Комплектующие системы ---\n";
+        $output .= "Процессор: " . trim(str_replace('Name', '', $cpu)) . "\n";
+        $output .= "Видеокарта: " . trim(str_replace('Name', '', $gpu)) . "\n";
+        $output .= "Оперативная память: " . $ramGb . " GB\n";
+        $output .= "----------------------------\n";
+
+        echo $output;
+
+        // Сохраняем результат в файл, чтобы клиент мог его прочитать (опционально)
+        file_put_contents(__DIR__ . '/../config/sys_info_cache.txt', $output);
+    }
+
+    private function getCmdOutput($cmd) {
+        $out = shell_exec($cmd);
+        return $out ? trim($out) : 'Н/Д';
     }
 }

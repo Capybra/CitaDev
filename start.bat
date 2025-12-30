@@ -1,19 +1,23 @@
 @echo off
-:: Устанавливаем заголовок окна, чтобы не путать
-title CitaDev_Server_Watchdog
+title CitaDev_Watchdog
 cd /d "%~dp0"
 
-:loop
-echo [%date% %time%] Запуск серверов...
+:: --- ПРЕДВАРИТЕЛЬНАЯ НАСТРОЙКА GIT ---
+:: Разрешаем работу в локальной папке (защита от ошибки Dubious Ownership)
+git config --global --add safe.directory "*"
+:: Заглушки данных пользователя для работы pull без ошибок
+git config --global user.email "bot@citadev.local"
+git config --global user.name "CitaDevBot"
 
-:: Запускаем API в отдельном скрытом окне
-:: Используем "php", так как путь уже в PATH после setup_env.ps1
+:loop
+echo [%time%] Запуск PHP сервисов...
+
+:: Запуск API сервера на порту 2712 в фоновом окне
 start "CitaDev_API" /min php -S 0.0.0.0:2712 index.php
 
-:: Запускаем Воркер в этом же окне (он будет держать цикл)
+:: Запуск Воркера в текущем окне (он держит цикл)
 php worker.php
 
-echo [%date% %time%] Сервер был остановлен для обновления или упал.
-echo Перезапуск через 2 секунды...
-timeout /t 2 >nul
+echo [%time%] Сервис был остановлен. Перезапуск через 3 секунды...
+timeout /t 3 >nul
 goto loop
