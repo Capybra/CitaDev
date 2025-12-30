@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель управления Core Server</title>
+    <style>
+        :root {
+            --primary: #4f46e5;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #1e293b;
+            --success: #22c55e;
+            --danger: #ef4444;
+        }
+
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        .status-dot { height: 12px; width: 12px; border-radius: 50%; display: inline-block; background: var(--danger); margin-right: 8px; }
+        .online { background: var(--success); box-shadow: 0 0 8px var(--success); }
+
+        .card { background: var(--card); border-radius: 12px; padding: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); margin-bottom: 20px; border: 1px solid #e2e8f0; }
+        
+        .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); gap: 20px; }
+        
+        h2 { margin-top: 0; font-size: 1.25rem; display: flex; justify-content: space-between; align-items: center; }
+        
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 0.875rem; font-weight: 600; margin-bottom: 5px; color: #64748b; }
+        
+        input[type="text"], input[type="number"] {
+            width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        input:focus { outline: none; border-color: var(--primary); }
+
+        .btn { 
+            cursor: pointer; padding: 10px 20px; border-radius: 6px; border: none; font-weight: 600;
+            transition: opacity 0.2s; display: inline-flex; align-items: center; gap: 8px;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-update { background: #334155; color: white; }
+        
+        .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--success); }
+        input:checked + .slider:before { transform: translateX(18px); }
+
+        .loader { border: 3px solid #f3f3f3; border-top: 3px solid var(--primary); border-radius: 50%; width: 20px; height: 20px; animation: spin 1s linear infinite; display: none; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <div>
+            <h1>Core Control <small style="font-size: 0.5em; vertical-align: middle;">v1.0</small></h1>
+            <div><span id="status-dot" class="status-dot"></span> <span id="status-text">Оффлайн</span></div>
+        </div>
+        <button class="btn btn-update" onclick="updateGit()">
+            <span>🔄 Git Pull & Restart</span>
+            <div id="git-loader" class="loader"></div>
+        </button>
+    </header>
+
+    <div id="modules-list" class="module-grid">
+        </div>
+</div>
+
+<script>
+    // КОНФИГУРАЦИЯ
+    const SERVER_IP = window.location.hostname || 'localhost'; 
+    const API_URL = `http://${SERVER_IP}:2712/api`;
+
+    // 1. Проверка статуса и загрузка модулей
+    async function fetchModules() {
+        try {
+            const response = await fetch(`${API_URL}/status`);
+            if (!response.ok) throw new Error();
+            const data = await response.json();
+            
+            document.getElementById('status-dot').classList.add('online');
+            document.getElementById('status-text').innerText = `Онлайн (${SERVER_IP}:2712)`;
+            
+            renderModules(data);
+        } catch (err) {
+            document.getElementById('status-dot').classList.remove('online');
+            document.getElementById('status-text').innerText = 'Нет связи с сервером';
+            document.getElementById('modules-list').innerHTML = '<div class="card">Ошибка загрузки. Проверьте, запущен ли сервер на ПК.</div>';
+        }
+    }
+
+    // 2. Отрисовка интерфейса на основе схемы от PHP
+    function renderModules(modules) {
+        const container = document.getElementById('modules-list');
+        container.innerHTML = '';
+
+        modules.forEach(m => {
+            const card = document.createElement('div');
+            card.className = 'card';
+            
+            // Генерируем поля ввода на основе схемы модуля
+            let fieldsHtml = '';
+            for (const [key, info] of Object.entries(m.schema)) {
+                const value = m.current_settings[key] || info.default;
+                fieldsHtml += `
+                    <div class="form-group">
+                        <label>${info.label || key}</label>
+                        <input type="${info.type === 'number' ? 'number' : 'text'}" 
+                               data-module="${m.module}" 
+                               data-key="${key}" 
+                               value="${value}">
+                    </div>
+                `;
+            }
+
+            card.innerHTML = `
+                <h2>
+                    ${m.module}
+                    <label class="switch">
+                        <input type="checkbox" class="mod-toggle" data-module="${m.module}" ${m.is_active ? 'checked' : ''}>
+                        <span class="slider"></span>
+                    </label>
+                </h2>
+                <div class="fields-container">${fieldsHtml}</div>
+                <button class="btn btn-primary" onclick="saveModule('${m.module}', this)">
+                    Сохранить настройки
+                </button>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    // 3. Отправка настроек на сервер
+    async function saveModule(name, btn) {
+        const originalText = btn.innerText;
+        btn.innerText = 'Сохранение...';
+        
+        const settings = {};
+        // Собираем данные из инпутов
+        document.querySelectorAll(`input[data-module="${name}"]`).forEach(input => {
+            settings[input.dataset.key] = input.type === 'number' ? Number(input.value) : input.value;
+        });
+        // Собираем статус включения
+        settings.enabled = document.querySelector(`.mod-toggle[data-module="${name}"]`).checked;
+
+        try {
+            const res = await fetch(`${API_URL}/save`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ module: name, settings: settings })
+            });
+            const result = await res.json();
+            alert(result.message || 'Успешно');
+        } catch (e) {
+            alert('Ошибка сохранения');
+        } finally {
+            btn.innerText = originalText;
+            fetchModules(); // Обновляем данные
+        }
+    }
+
+    // 4. Команда обновления Git
+    async function updateGit() {
+        if (!confirm('Выполнить git pull и перезагрузить сервер?')) return;
+        
+        const loader = document.getElementById('git-loader');
+        loader.style.display = 'block';
+
+        try {
+            const res = await fetch(`${API_URL}/update`);
+            const data = await res.json();
+            alert(`Git Output:\n${data.output}\n\n${data.message}`);
+        } catch (e) {
+            alert('Сервер инициировал обновление и перезагрузку.');
+        } finally {
+            loader.style.display = 'none';
+        }
+    }
+
+    // Запуск при старте
+    fetchModules();
+    // Обновляем статус каждые 10 секунд
+    setInterval(fetchModules, 10000);
+</script>
+
+</body>
+</html>

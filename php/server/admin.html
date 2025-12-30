@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --primary: #3498db; --success: #2ecc71; --danger: #e74c3c; --warning: #f39c12; --dark: #2c3e50; --light: #f5f7fa; --card-bg: #fff; }
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--light); padding: 20px; margin: 0; }
+        
+        .btn { padding: 8px 12px; border: none; border-radius: 4px; cursor: pointer; color: white; background: var(--primary); font-size: 14px; transition: 0.2s; }
+        .btn:hover { opacity: 0.9; }
+        .btn-sm { padding: 4px 8px; font-size: 12px; }
+        .btn-danger { background: var(--danger); }
+        .btn-success { background: var(--success); }
+        .btn-warning { background: var(--warning); }
+        .btn-secondary { background: #95a5a6; }
+
+        /* Login */
+        .login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(44, 62, 80, 0.9); display: flex; justify-content: center; align-items: center; z-index: 9999; }
+        .login-box { background: white; padding: 30px; border-radius: 10px; width: 300px; text-align: center; }
+        .login-box input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; }
+
+        /* Admin Layout */
+        .admin-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .tree-view { max-width: 900px; margin: 0 auto; }
+        .tree-section { background: white; margin-bottom: 20px; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid #eee; }
+        .tree-header { background: #f1f2f6; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ddd; }
+        .tree-header h3 { margin: 0; font-size: 18px; color: var(--dark); display: flex; align-items: center; gap: 10px; }
+        
+        .tree-sub-wrapper { padding: 0 0 15px 0; }
+        .tree-sub { margin: 15px 15px 0 15px; border: 1px solid #e0e0e0; border-radius: 6px; overflow: hidden; }
+        .tree-sub-header { background: #fafafa; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; }
+        .tree-sub-header h4 { margin: 0; font-size: 15px; color: #555; }
+        
+        .tree-tile { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; border-bottom: 1px solid #f5f5f5; background: white; }
+        .tree-tile:last-child { border-bottom: none; }
+        .tree-tile:hover { background: #f9f9f9; }
+
+        .actions { display: flex; gap: 5px; }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: white; padding: 25px; border-radius: 10px; width: 500px; max-width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 14px; color: var(--dark); }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+        .modal-footer { text-align: right; margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; }
+    </style>
+</head>
+<body>
+
+<div class="login-overlay" id="login-modal">
+    <div class="login-box">
+        <h2>Вход</h2>
+        <input type="password" id="password-input" placeholder="Пароль (admin123)">
+        <button class="btn" onclick="login()">Войти</button>
+        <p id="login-error" style="color: red; margin-top: 10px; font-size: 12px;"></p>
+    </div>
+</div>
+
+<div id="admin-content" style="display: none;">
+    <div class="admin-header">
+        <div>
+            <h2 style="margin:0;">Админка</h2>
+            <div style="margin-top: 10px;">
+                <button class="btn btn-sm btn-secondary" id="mode-tree-btn" onclick="switchAdminMode('tree')">Структура</button>
+                <button class="btn btn-sm" id="mode-types-btn" onclick="switchAdminMode('types')">Типы плиток</button>
+            </div>
+        </div>
+        <div>
+            <button class="btn btn-success" onclick="openSectionModal(0)">+ Раздел</button>
+            <a href="index.html" class="btn btn-secondary" style="text-decoration: none;">На сайт</a>
+            <button class="btn btn-danger" onclick="logout()">Выход</button>
+        </div>
+    </div>
+
+    <div class="tree-view" id="tree-container">
+        </div>
+
+    <div class="tile-types-view" id="tile-types-view" style="display: none; max-width: 900px; margin: 0 auto;">
+        <div class="admin-header" style="box-shadow: none; border-bottom: 1px solid #ddd;">
+            <h3 style="margin:0;">Редактор типов</h3>
+            <button class="btn btn-success" onclick="openTypeModal(0)">+ Новый тип плитки</button>
+        </div>
+        <div class="tree-view" id="types-list" style="padding: 0; background: none; box-shadow: none;">
+            </div>
+    </div>
+</div>
+
+<div class="modal" id="structure-modal">
+    <div class="modal-content">
+        <h3 id="st-modal-title">Настройка</h3>
+        <input type="hidden" id="st-type">
+        <input type="hidden" id="st-id">
+        <input type="hidden" id="st-parent-id">
+        
+        <div class="form-group">
+            <label>Название</label>
+            <input type="text" id="st-name" placeholder="Например: Серверная">
+        </div>
+        
+        <div class="form-group" id="st-icon-group">
+            <label>Иконка (FontAwesome класс)</label>
+            <input type="text" id="st-icon" placeholder="fas fa-server">
+            <small style="color:#777">Пример: fas fa-hdd, fas fa-gamepad</small>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn btn-danger" onclick="closeModal('structure-modal')">Отмена</button>
+            <button class="btn btn-success" onclick="saveStructure()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="type-modal">
+    <div class="modal-content">
+        <h3 id="type-modal-title">Настройка типа плитки</h3>
+        <input type="hidden" id="type-id-key">
+        
+        <div class="form-group">
+            <label>Ключ типа (Уникальный, латиница, без пробелов)</label>
+            <input type="text" id="type-key" placeholder="Например: zerotier">
+        </div>
+        <div class="form-group">
+            <label>Отображаемое имя</label>
+            <input type="text" id="type-name" placeholder="Например: Zerotier Сеть">
+        </div>
+
+        <div class="form-group" style="margin-top: 20px; border-top: 1px dashed #eee; padding-top: 15px;">
+            <label style="display: inline-flex; align-items: center;">
+                <input type="checkbox" id="type-show-status" style="width: auto; margin-right: 10px;">
+                Показывать значок статуса (АКТУАЛЬНО/НЕАКТУАЛЬНО)
+            </label>
+        </div>
+
+        <h4>Поля данных <small style="font-weight:400;">(Ключ, Метка, Тип)</small></h4>
+        <div id="type-fields-container" style="border: 1px solid #ddd; padding: 10px; border-radius: 4px; background:#fafafa;">
+            
+            <div id="field-rows-wrapper">
+                </div>
+            
+            <div style="margin-top: 10px;">
+                <button class="btn btn-sm btn-secondary" onclick="addFieldRow()" type="button">+ Добавить поле</button>
+            </div>
+        </div>
+
+        <div class="modal-footer">
+            <button class="btn btn-danger" onclick="closeModal('type-modal')">Отмена</button>
+            <button class="btn btn-success" onclick="saveTileType()">Сохранить тип</button>
+        </div>
+    </div>
+</div>
+
+<div class="modal" id="edit-modal">
+    <div class="modal-content">
+        <h3>Редактор плитки</h3>
+        <input type="hidden" id="edit-tile-id">
+        <input type="hidden" id="edit-sub-id">
+        
+        <div class="form-group">
+            <label>Заголовок</label>
+            <input type="text" id="inp-title">
+        </div>
+        <div class="form-group">
+            <label>Тип</label>
+            <select id="inp-type" onchange="toggleTileFields()">
+                </select>
+        </div>
+        <div class="form-group">
+            <label>Ширина</label>
+            <select id="inp-width">
+                <option value="1">1 (Маленькая)</option>
+                <option value="2">2 (Средняя)</option>
+                <option value="4">4 (На всю ширину)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Статус</label>
+            <select id="inp-status">
+                <option value="online">АКТУАЛЬНО</option>
+                <option value="offline">НЕАКТУАЛЬНО</option>
+                <option value="">--- (Нет статуса)</option>
+            </select>
+        </div>
+        
+        <div id="dynamic-fields-container"></div>
+
+        <div class="modal-footer">
+            <button class="btn btn-danger" onclick="closeModal('edit-modal')">Отмена</button>
+            <button class="btn btn-success" onclick="saveTile()">Сохранить</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    const AUTH_KEY = 'dashboard_pass';
+    let currentData = { sections: [] };
+    let tileTypes = [];
+    let currentDataForTileModal = null; 
+
+    // --- AUTH ---
+    function checkAuth() {
+        const pass = sessionStorage.getItem(AUTH_KEY);
+        if (pass) {
+            document.getElementById('login-modal').style.display = 'none';
+            document.getElementById('admin-content').style.display = 'block';
+            loadAdminData();
+        }
+    }
+
+    async function login() {
+        const pass = document.getElementById('password-input').value;
+        const res = await fetch('config.php?action=login', { method: 'POST', body: JSON.stringify({ password: pass }) });
+        const json = await res.json();
+        if (json.success) {
+            sessionStorage.setItem(AUTH_KEY, pass);
+            checkAuth();
+        } else {
+            document.getElementById('login-error').innerText = json.error;
+        }
+    }
+
+    function logout() { sessionStorage.removeItem(AUTH_KEY); location.reload(); }
+
+    // --- DATA LOADING & SWITCHING ---
+    async function loadAdminData() {
+        try {
+            const [dataRes, typesRes] = await Promise.all([
+                fetch('config.php?action=get_data'),
+                fetch('config.php?action=get_tile_types')
+            ]);
+            currentData = await dataRes.json();
+            tileTypes = await typesRes.json();
+            
+            console.log("✅ admin.html: Admin data loaded successfully.", { currentData, tileTypes });
+
+            updateTileTypeDropdown();
+            renderTree();
+            renderTypesList(); 
+        } catch (e) {
+            console.error("❌ admin.html: Ошибка загрузки данных:", e);
+            alert("Ошибка загрузки данных: " + e.message);
+        }
+    }
+
+    function switchAdminMode(mode) {
+        document.getElementById('tree-container').style.display = mode === 'tree' ? 'block' : 'none';
+        document.getElementById('tile-types-view').style.display = mode === 'types' ? 'block' : 'none';
+
+        document.getElementById('mode-tree-btn').classList.toggle('btn-secondary', mode === 'types');
+        document.getElementById('mode-tree-btn').classList.toggle('btn-primary', mode === 'tree');
+        document.getElementById('mode-types-btn').classList.toggle('btn-secondary', mode === 'tree');
+        document.getElementById('mode-types-btn').classList.toggle('btn-primary', mode === 'types');
+        
+        if (mode === 'types') {
+            renderTypesList();
+        }
+    }
+
+    function updateTileTypeDropdown() {
+        const select = document.getElementById('inp-type');
+        select.innerHTML = tileTypes.map(type => `<option value="${type.type}">${type.name}</option>`).join('');
+    }
+
+    // --- RENDERING STRUCTURE ---
+    function renderTree() {
+        const c = document.getElementById('tree-container');
+        if (!currentData.sections || currentData.sections.length === 0) {
+            c.innerHTML = '<p style="text-align:center">Нет разделов. Создайте первый!</p>';
+            return;
+        }
+
+        c.innerHTML = currentData.sections.map(sec => `
+            <div class="tree-section">
+                <div class="tree-header">
+                    <h3><i class="${sec.icon}"></i> ${sec.name}</h3>
+                    <div class="actions">
+                        <button class="btn btn-warning btn-sm" onclick="openSectionModal(${sec.id}, '${sec.name}', '${sec.icon}')"><i class="fas fa-pen"></i></button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteSection(${sec.id})"><i class="fas fa-trash"></i></button>
+                        <button class="btn btn-success btn-sm" onclick="openSubsectionModal(${sec.id}, 0)">+ Подраздел</button>
+                    </div>
+                </div>
+                <div class="tree-sub-wrapper">
+                    ${sec.subsections.length === 0 ? '<div style="padding:15px; color:#999; text-align:center;">Нет подразделов</div>' : ''}
+                    ${sec.subsections.map(sub => `
+                        <div class="tree-sub">
+                            <div class="tree-sub-header">
+                                <h4>${sub.name}</h4>
+                                <div class="actions">
+                                    <button class="btn btn-secondary btn-sm" onclick="openTileModal(${sub.id}, 0)">+ Плитка</button>
+                                    <button class="btn btn-warning btn-sm" onclick="openSubsectionModal(${sec.id}, ${sub.id}, '${sub.name}')"><i class="fas fa-pen"></i></button>
+                                    <button class="btn btn-danger btn-sm" onclick="deleteSubsection(${sec.id}, ${sub.id})"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                            <div>
+                                ${sub.tiles.length === 0 ? '<div style="padding:10px; color:#ccc; font-size:12px;">Пусто</div>' : ''}
+                                ${sub.tiles.map(tile => `
+                                    <div class="tree-tile">
+                                        <div>
+                                            <strong>${tile.title}</strong>
+                                            <span style="font-size:12px; color:#777; margin-left:10px;">(${tile.type})</span>
+                                        </div>
+                                        <div class="actions">
+                                            <button class="btn btn-warning btn-sm" onclick='openTileModal(${sub.id}, ${JSON.stringify(tile)})'><i class="fas fa-pen"></i></button>
+                                            <button class="btn btn-danger btn-sm" onclick="deleteTile(${sub.id}, ${tile.id})"><i class="fas fa-trash"></i></button> </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // --- CRUD SECTIONS/SUBSECTIONS ---
+    function openSectionModal(id, name = '', icon = '') {
+        document.getElementById('st-modal-title').innerText = id === 0 ? 'Создать раздел' : 'Редактировать раздел';
+        document.getElementById('st-type').value = 'section';
+        document.getElementById('st-id').value = id;
+        document.getElementById('st-parent-id').value = 0;
+        document.getElementById('st-name').value = name;
+        document.getElementById('st-icon').value = icon;
+        document.getElementById('st-icon-group').style.display = 'block';
+        document.getElementById('structure-modal').classList.add('active');
+    }
+
+    function openSubsectionModal(parentId, id, name = '') {
+        document.getElementById('st-modal-title').innerText = id === 0 ? 'Создать подраздел' : 'Редактировать подраздел';
+        document.getElementById('st-type').value = 'subsection';
+        document.getElementById('st-id').value = id;
+        document.getElementById('st-parent-id').value = parentId;
+        document.getElementById('st-name').value = name;
+        document.getElementById('st-icon-group').style.display = 'none';
+        document.getElementById('structure-modal').classList.add('active');
+    }
+    
+    async function saveStructure() {
+        const type = document.getElementById('st-type').value;
+        const id = document.getElementById('st-id').value;
+        const parentId = document.getElementById('st-parent-id').value;
+        const name = document.getElementById('st-name').value;
+        const icon = document.getElementById('st-icon').value;
+
+        const payload = {
+            auth: sessionStorage.getItem(AUTH_KEY),
+            data: { id: id, name: name },
+        };
+
+        let action;
+        if (type === 'section') {
+            action = 'save_section';
+            payload.data.icon = icon;
+        } else if (type === 'subsection') {
+            action = 'save_subsection';
+            payload.section_id = parentId;
+        } else {
+            return;
+        }
+
+        await fetch(`config.php?action=${action}`, { method: 'POST', body: JSON.stringify(payload) });
+        closeModal('structure-modal');
+        await loadAdminData();
+    }
+    
+    async function deleteSection(id) {
+        if (!confirm('Вы уверены, что хотите удалить этот раздел со всеми подразделами и плитками?')) return;
+        const payload = { auth: sessionStorage.getItem(AUTH_KEY), id: id };
+        await fetch('config.php?action=delete_section', { method: 'POST', body: JSON.stringify(payload) });
+        await loadAdminData();
+    }
+
+    async function deleteSubsection(parentId, id) {
+        if (!confirm('Вы уверены, что хотите удалить этот подраздел со всеми плитками?')) return;
+        // ИЗМЕНЕНИЕ 2: Передаем section_id, как требует исправленный config.php
+        const payload = { auth: sessionStorage.getItem(AUTH_KEY), section_id: parentId, id: id }; 
+        await fetch('config.php?action=delete_subsection', { method: 'POST', body: JSON.stringify(payload) });
+        await loadAdminData();
+    }
+
+    // --- CRUD TILE TYPES ---
+    function renderTypesList() {
+        const c = document.getElementById('types-list');
+        c.innerHTML = tileTypes.map(type => `
+            <div class="tree-tile" style="border: 1px solid #ddd; margin-bottom: 10px; background: white;">
+                <div>
+                    <strong>${type.name}</strong>
+                    <span style="font-size:12px; color:#777; margin-left:10px;">(${type.type}) - ${type.fields.length} полей | Статус: ${type.show_status !== false ? 'ВКЛ' : 'ВЫКЛ'}</span>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-warning btn-sm" onclick='openTypeModal(${JSON.stringify(type)})'><i class="fas fa-pen"></i></button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteTileType('${type.type}')"><i class="fas fa-trash"></i></button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // Функция для создания HTML-кода строки поля (в модальном окне редактирования)
+    function createFieldRowHtml(key = '', label = '', type = 'text', typeKey = '') {
+        // Логика удаления поля в модальном окне: удаляем из памяти (JS array) и DOM
+        const deleteLogic = `
+            const typeDef = tileTypes.find(t => t.type === '${typeKey}');
+            if (typeDef) {
+                typeDef.fields = typeDef.fields.filter(field => field.key !== '${key}');
+                this.closest('.field-row').remove();
+            }
+        `;
+
+        return `
+            <div class="field-row" data-field-key="${key}" style="display: flex; gap: 10px; margin-bottom: 8px; align-items: center; background: #fff; padding: 5px; border-radius: 4px; border: 1px solid #eee;">
+                <input type="text" placeholder="Ключ (ip)" value="${key}" style="flex: 2;">
+                <input type="text" placeholder="Метка (IP-адрес)" value="${label}" style="flex: 3;">
+                <select style="flex: 1;">
+                    <option value="text" ${type === 'text' ? 'selected' : ''}>Текст</option>
+                    <option value="number" ${type === 'number' ? 'selected' : ''}>Число</option>
+                    <option value="textarea" ${type === 'textarea' ? 'selected' : ''}>Текстовое поле</option>
+                </select>
+                <button class="btn btn-sm btn-danger" 
+                        onclick="${deleteLogic}" 
+                        type="button" 
+                        style="flex: 0 0 30px;">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `;
+    }
+
+
+    // ✅ ФУНКЦИЯ ДЛЯ ПРЯМОГО УДАЛЕНИЯ ТИПА ПЛИТКИ ИЗ JSON (через PHP)
+    async function deleteTileType(typeKey) {
+        // 1. Подтверждение
+        if (!confirm(`Вы уверены, что хотите удалить тип "${typeKey}"? Все связанные плитки станут "Неизвестным типом".`)) return;
+        
+        // 2. Отправка запроса на PHP для удаления из JSON
+        const payload = { 
+            auth: sessionStorage.getItem(AUTH_KEY), 
+            type: typeKey 
+        };
+        
+        const response = await fetch('config.php?action=delete_tile_type', { 
+            method: 'POST', 
+            body: JSON.stringify(payload) 
+        });
+
+        // 3. Обработка ответа
+        const result = await response.json();
+        
+        if (result.success) {
+            console.log(`✅ Тип ${typeKey} успешно удален из JSON.`);
+            // 4. Обновление данных на странице (перезагрузка данных и перерисовка списка)
+            await loadAdminData();
+        } else {
+             alert('Ошибка удаления типа: ' + (result.error || 'Неизвестная ошибка'));
+             console.error('Ошибка удаления типа:', result.error);
+        }
+    }
+
+
+    // ✅ ЛОГИКА РЕНДЕРИНГА ПОЛЕЙ (Теперь принимает typeKey)
+    function renderFieldRows(fields, typeKey) {
+        const wrapper = document.getElementById('field-rows-wrapper');
+        wrapper.innerHTML = '';
+        
+        let fieldsHtml = '';
+        fields.forEach(field => {
+            if (field && field.key) { 
+                // ❗ ПЕРЕДАЕМ typeKey
+                fieldsHtml += createFieldRowHtml(field.key || '', field.label || '', field.type || 'text', typeKey); 
+            }
+        });
+        
+        wrapper.innerHTML = fieldsHtml;
+    }
+
+    // ✅ ФУНКЦИЯ ДОБАВЛЕНИЯ ПОЛЯ
+    function addFieldRow() {
+        const wrapper = document.getElementById('field-rows-wrapper');
+        
+        // Получаем текущий ключ типа
+        const currentTypeKey = document.getElementById('type-key').value;
+
+        // Используем insertAdjacentHTML, передавая текущий ключ типа
+        wrapper.insertAdjacentHTML('beforeend', createFieldRowHtml('', '', 'text', currentTypeKey));
+    }
+
+    function openTypeModal(typeData) {
+        const isNew = typeData === 0;
+        
+        const typeKey = isNew ? '' : (typeData && typeData.type ? typeData.type : '');
+        const typeName = isNew ? '' : (typeData && typeData.name ? typeData.name : '');
+        
+        document.getElementById('type-modal-title').innerText = isNew ? 'Создать новый тип' : 'Редактировать тип: ' + typeName;
+        document.getElementById('type-id-key').value = typeKey;
+        document.getElementById('type-key').value = typeKey;
+        document.getElementById('type-key').disabled = !isNew; 
+        document.getElementById('type-name').value = typeName;
+        
+        const showStatus = isNew ? true : (typeData && typeData.show_status !== false); 
+        document.getElementById('type-show-status').checked = showStatus;
+
+        // Рендерим поля
+        const fields = isNew ? [] : (typeData && typeData.fields ? typeData.fields : []);
+        
+        // ❗ ПЕРЕДАЕМ typeKey в renderFieldRows
+        renderFieldRows(fields, typeKey); 
+        
+        document.getElementById('type-modal').classList.add('active');
+    }
+    
+    async function saveTileType() {
+        const key = document.getElementById('type-key').value.trim();
+        const name = document.getElementById('type-name').value.trim();
+        const showStatus = document.getElementById('type-show-status').checked;
+
+        const fields = [];
+        // При сохранении берем поля из DOM, так как удаление уже произошло в JS
+        const fieldRows = document.querySelectorAll('#field-rows-wrapper .field-row');
+        fieldRows.forEach(row => {
+            const inputs = row.querySelectorAll('input, select');
+            const keyInput = inputs[0].value.trim(); 
+
+            // Собираем только те поля, у которых заполнен ключ
+            if (keyInput && inputs[1].value.trim()) { 
+                fields.push({
+                    key: keyInput,
+                    label: inputs[1].value.trim(),
+                    type: inputs[2].value
+                });
+            }
+        });
+
+        if (!key || !name) {
+            alert('Заполните Ключ и Имя типа.');
+            return;
+        }
+
+        const payload = {
+            auth: sessionStorage.getItem(AUTH_KEY),
+            tile_type: { 
+                type: key, 
+                name: name, 
+                fields: fields,
+                show_status: showStatus
+            }
+        };
+        
+        await fetch('config.php?action=save_tile_type', { method: 'POST', body: JSON.stringify(payload) });
+
+        closeModal('type-modal');
+        
+        await loadAdminData(); 
+        
+        if (document.getElementById('tile-types-view').style.display !== 'none') {
+            renderTypesList();
+        }
+    }
+
+
+    // --- CRUD TILES ---
+    function toggleTileFields() {
+        const selectedTypeKey = document.getElementById('inp-type').value;
+        let dynamicContainer = document.getElementById('dynamic-fields-container');
+        dynamicContainer.innerHTML = '';
+        const typeDef = tileTypes.find(t => t.type === selectedTypeKey);
+        
+        if (typeDef) {
+            // Исправлено: currentDataForTileModal.data теперь содержит только поля данных, не статус
+            const tileData = currentDataForTileModal.data || {}; 
+            
+            typeDef.fields.forEach(field => {
+                const value = tileData[field.key] || '';
+                
+                let inputHtml = '';
+                if (field.type === 'textarea') {
+                    inputHtml = `<textarea id="data-${field.key}" rows="3">${value}</textarea>`;
+                } else {
+                    inputHtml = `<input type="${field.type}" id="data-${field.key}" value="${value}">`;
+                }
+                
+                dynamicContainer.innerHTML += `
+                    <div class="form-group">
+                        <label>${field.label}</label>
+                        ${inputHtml}
+                    </div>
+                `;
+            });
+        }
+    }
+
+    function openTileModal(subId, tileOrId) {
+        const isNew = tileOrId === 0;
+        
+        const defaultTypeKey = tileTypes.length > 0 ? tileTypes[0].type : '';
+        const defaultTypeDef = tileTypes.find(t => t.type === defaultTypeKey);
+        // Статус теперь берется из корневого поля tile.status
+        const defaultStatus = defaultTypeDef && defaultTypeDef.show_status === false ? '' : 'online'; 
+
+        const tile = isNew 
+            ? { id: 0, title: '', type: defaultTypeKey, width: 2, status: defaultStatus, data: {} } 
+            : tileOrId;
+        
+        currentDataForTileModal = tile; 
+
+        document.getElementById('edit-sub-id').value = subId;
+        document.getElementById('edit-tile-id').value = tile.id;
+        document.getElementById('inp-title').value = tile.title;
+        document.getElementById('inp-type').value = tile.type;
+        document.getElementById('inp-width').value = tile.width;
+        
+        // Исправлено: Установка статуса из корневого поля tile.status
+        document.getElementById('inp-status').value = tile.status || ''; 
+        
+        updateTileTypeDropdown();
+        toggleTileFields();
+        
+        document.getElementById('edit-modal').classList.add('active');
+    }
+
+    async function saveTile() {
+        const subId = document.getElementById('edit-sub-id').value;
+        const type = document.getElementById('inp-type').value;
+        const typeDef = tileTypes.find(t => t.type === type);
+        
+        // --- ИСПРАВЛЕНИЕ: Извлекаем статус отдельно ---
+        const tileStatus = document.getElementById('inp-status').value; 
+        
+        // data теперь содержит только динамические поля
+        const data = {};
+
+        if (typeDef) {
+            typeDef.fields.forEach(field => {
+                const inputElement = document.getElementById(`data-${field.key}`);
+                if (inputElement) {
+                    data[field.key] = inputElement.value;
+                }
+            });
+        }
+        // --- КОНЕЦ ИСПРАВЛЕНИЯ ---
+        
+        const payload = {
+            auth: sessionStorage.getItem(AUTH_KEY),
+            subsection_id: subId,
+            tile: {
+                id: document.getElementById('edit-tile-id').value,
+                title: document.getElementById('inp-title').value,
+                type: type,
+                width: parseInt(document.getElementById('inp-width').value),
+                status: tileStatus, // <-- ДОБАВЛЕНО/ПЕРЕНЕСЕНО СЮДА
+                data: data 
+            }
+        };
+        
+        await fetch('config.php?action=save_tile', { method: 'POST', body: JSON.stringify(payload) });
+        closeModal('edit-modal');
+        await loadAdminData();
+    }
+
+    async function deleteTile(subId, id) { // ИЗМЕНЕНИЕ 3: Добавлен параметр subId
+        if (!confirm('Вы уверены, что хотите удалить эту плитку?')) return;
+        // ИЗМЕНЕНИЕ 3: Передаем subsection_id, как требует исправленный config.php
+        const payload = { auth: sessionStorage.getItem(AUTH_KEY), subsection_id: subId, id: id };
+        await fetch('config.php?action=delete_tile', { method: 'POST', body: JSON.stringify(payload) });
+        await loadAdminData();
+    }
+    
+    // --- UTILS ---
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+    // Init
+    checkAuth();
+</script>
+</body>
+</html>

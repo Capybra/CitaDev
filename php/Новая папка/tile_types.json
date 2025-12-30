@@ -1,0 +1,58 @@
+[
+    {
+        "type": "Zerotier",
+        "name": "Zerotier Сеть",
+        "fields": [
+            {
+                "key": "имя хоста",
+                "label": "имя хоста",
+                "type": "text"
+            },
+            {
+                "key": "ip",
+                "label": "ip",
+                "type": "text"
+            }
+        ],
+        "show_status": true
+    },
+    {
+        "type": "Сервера",
+        "name": "Сервера",
+        "fields": [
+            {
+                "key": "Название",
+                "label": "Название",
+                "type": "text"
+            },
+            {
+                "key": "ip",
+                "label": "ip",
+                "type": "text"
+            },
+            {
+                "key": "Описание",
+                "label": "Описание",
+                "type": "textarea"
+            }
+        ],
+        "show_status": true
+    },
+    {
+        "type": "FoundryVTT",
+        "name": "FoundryVTT",
+        "fields": [
+            {
+                "key": "ip",
+                "label": "ip",
+                "type": "text"
+            },
+            {
+                "key": "Описание",
+                "label": "Описание",
+                "type": "text"
+            }
+        ],
+        "show_status": false
+    }
+]

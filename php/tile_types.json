@@ -1,0 +1,24 @@
+[
+    {
+        "type": "Сеть",
+        "name": "Сеть",
+        "fields": [
+            {
+                "key": "ipmac",
+                "label": "ipmac",
+                "type": "text"
+            },
+            {
+                "key": "ip",
+                "label": "ip",
+                "type": "number"
+            },
+            {
+                "key": "number",
+                "label": "number",
+                "type": "number"
+            }
+        ],
+        "show_status": false
+    }
+]
