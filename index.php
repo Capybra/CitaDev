@@ -15,17 +15,17 @@ $baseDir = __DIR__;
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $configFile = $baseDir . '/config/modules.json';
 $modulesDir = $baseDir . '/modules';
+$cacheFile  = $baseDir . '/config/sys_info_cache.txt';
 
 // --- АВТОЗАГРУЗКА В РЕЕСТР ---
-// Прописываем start.bat в автозагрузку пользователя
 $batPath = $baseDir . '\\start.bat';
 $regCmd = 'reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "CitaDevServer" /t REG_SZ /d "\"'.$batPath.'\"" /f';
 shell_exec($regCmd);
 
 // --- РОУТИНГ ---
 
-// Состояние модулей
-if ($uri == '/api/status') {
+// 1. Получение статуса модулей
+if ($uri == '/api/status' && $_SERVER['REQUEST_METHOD'] == 'GET') {
     $result = [];
     $saved = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
     if (file_exists($modulesDir . '/BaseModule.php')) require_once $modulesDir . '/BaseModule.php';
@@ -48,8 +48,8 @@ if ($uri == '/api/status') {
     exit;
 }
 
-// Сохранение настроек
-if ($uri == '/api/save') {
+// 2. Сохранение настроек
+if ($uri == '/api/save' && $_SERVER['REQUEST_METHOD'] == 'POST') {
     $data = json_decode(file_get_contents('php://input'), true);
     if ($data) {
         $all = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
@@ -62,18 +62,21 @@ if ($uri == '/api/save') {
     exit;
 }
 
-// Обновление из Git (ветка main)
-if ($uri == '/api/update') {
-    // 2>&1 позволяет поймать ошибки в переменную $output
-    $output = shell_exec('git reset --hard HEAD && git pull origin main 2>&1');
+// 3. Получение данных о системе (для модуля SystemInfo)
+if ($uri == '/api/sysinfo') {
+    $content = file_exists($cacheFile) ? file_get_contents($cacheFile) : "Ожидание данных от воркера...";
+    echo json_encode(['data' => $content]);
+    exit;
+}
 
+// 4. Обновление через Git (ветка main)
+if ($uri == '/api/update') {
+    $output = shell_exec('git reset --hard HEAD && git pull origin main 2>&1');
     echo json_encode([
         'status' => 'success',
-        'output' => $output ?: 'Команда выполнена',
+        'output' => $output ?: 'Git pull executed',
         'message' => 'Система перезагрузится через 3 секунды.'
     ]);
-
-    // Суицид процессов для перезагрузки через start.bat
     pclose(popen('start /b cmd /c "timeout /t 3 && taskkill /F /IM php.exe /T"', "r"));
     exit;
 }

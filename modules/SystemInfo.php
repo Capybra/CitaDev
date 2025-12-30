@@ -3,6 +3,9 @@ require_once 'BaseModule.php';
 
 class SystemInfo extends BaseModule {
 
+    /**
+     * Описание схемы настроек для генерации полей в интерфейсе index.html
+     */
     public function getConfigSchema(): array {
         return [
             'info_level' => [
@@ -13,34 +16,46 @@ class SystemInfo extends BaseModule {
         ];
     }
 
+    /**
+     * Основной метод, который вызывается worker.php каждые 2 секунды
+     */
     public function run() {
-        echo "[SystemInfo] Сбор данных о железе...\n";
+        echo "[SystemInfo] Сбор данных о железе через PowerShell...\n";
 
-        // Собираем данные через WMIC (стандартная утилита Windows)
-        $cpu = $this->getCmdOutput('wmic cpu get name');
-        $gpu = $this->getCmdOutput('wmic path win32_VideoController get name');
-        $ram = $this->getCmdOutput('wmic computersystem get totalphysicalmemory');
+        // Получаем данные через современные команды PowerShell (Get-CimInstance)
+        $cpu = $this->getPsOutput('(Get-CimInstance Win32_Processor).Name');
+        $gpu = $this->getPsOutput('(Get-CimInstance Win32_VideoController).Name');
+        $ramRaw = $this->getPsOutput('(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory');
 
-        // Преобразуем RAM в ГБ
+        // Преобразуем ОЗУ из байтов в ГБ
         $ramGb = 0;
-        if (preg_match('/\d+/', $ram, $matches)) {
-            $ramGb = round($matches[0] / (1024 * 1024 * 1024), 2);
+        if (is_numeric($ramRaw)) {
+            $ramGb = round($ramRaw / (1024 ** 3), 2);
         }
 
+        // Формируем текст вывода
         $output = "--- Комплектующие системы ---\n";
-        $output .= "Процессор: " . trim(str_replace('Name', '', $cpu)) . "\n";
-        $output .= "Видеокарта: " . trim(str_replace('Name', '', $gpu)) . "\n";
+        $output .= "Процессор: " . ($cpu ?: 'Не определен') . "\n";
+        $output .= "Видеокарта: " . ($gpu ?: 'Не определена') . "\n";
         $output .= "Оперативная память: " . $ramGb . " GB\n";
+        $output .= "Время обновления: " . date('H:i:s') . "\n";
         $output .= "----------------------------\n";
 
+        // Вывод в консоль воркера
         echo $output;
 
-        // Сохраняем результат в файл, чтобы клиент мог его прочитать (опционально)
-        file_put_contents(__DIR__ . '/../config/sys_info_cache.txt', $output);
+        // Сохраняем в кэш-файл в папку config, чтобы API (index.php) мог отдать это клиенту
+        $cachePath = __DIR__ . '/../config/sys_info_cache.txt';
+        file_put_contents($cachePath, $output);
     }
 
-    private function getCmdOutput($cmd) {
-        $out = shell_exec($cmd);
-        return $out ? trim($out) : 'Н/Д';
+    /**
+     * Вспомогательный метод для выполнения команд PowerShell
+     */
+    private function getPsOutput($command) {
+        // Запускаем PowerShell без профиля и с обходом политики выполнения
+        $fullCmd = "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"$command\"";
+        $result = shell_exec($fullCmd);
+        return $result ? trim($result) : null;
     }
 }

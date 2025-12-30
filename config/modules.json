@@ -1,8 +1,6 @@
 {
     "SystemInfo": {
-        "undefined": "on",
-        "interval": 5,
-        "message": "System OK",
-        "enabled": false
+        "enabled": false,
+        "info_level": "short"
     }
 }
