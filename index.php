@@ -1,88 +1,86 @@
 <?php
-/**
- * CitaDev Core API
- * Port: 2712
- */
-
+// Разрешаем запросы с любого адреса (CORS) для удаленного управления
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
-header('Content-Type: application/json');
 
-if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') exit;
+// Обработка предварительных запросов браузера
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    exit;
+}
 
 $baseDir = __DIR__;
-$uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-$configFile = $baseDir . '/config/modules.json';
-$modulesDir = $baseDir . '/modules';
-$cacheFile  = $baseDir . '/config/sys_info_cache.txt';
+$configDir = $baseDir . '/config';
+$configFile = $configDir . '/modules.json';
 
-// --- АВТОЗАГРУЗКА В РЕЕСТР ---
-$batPath = $baseDir . '\\start.bat';
-$regCmd = 'reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "CitaDevServer" /t REG_SZ /d "\"'.$batPath.'\"" /f';
+// Автоматическая регистрация в автозагрузке (скрытый запуск)
+$vbsPath = $baseDir . '\\silent_start.vbs';
+$regCmd = 'reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "CitaDevServer" /t REG_SZ /d "wscript.exe \"'.$vbsPath.'\"" /f';
 shell_exec($regCmd);
 
-// --- РОУТИНГ ---
+$uri = $_SERVER['REQUEST_URI'];
 
-// 1. Получение статуса модулей
-if ($uri == '/api/status' && $_SERVER['REQUEST_METHOD'] == 'GET') {
-    $result = [];
-    $saved = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
-    if (file_exists($modulesDir . '/BaseModule.php')) require_once $modulesDir . '/BaseModule.php';
-
-    foreach (glob($modulesDir . '/*.php') as $file) {
-        $className = basename($file, '.php');
-        if ($className == 'BaseModule') continue;
-        require_once $file;
+// API: Статус модулей
+if (strpos($uri, '/api/status') !== false) {
+    $config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
+    $modules = [];
+    
+    foreach (glob($baseDir . '/modules/*.php') as $filename) {
+        if (basename($filename) === 'BaseModule.php') continue;
+        require_once $filename;
+        $className = pathinfo($filename, PATHINFO_FILENAME);
         if (class_exists($className)) {
-            $module = new $className();
-            $result[] = [
+            $mod = new $className($config[$className] ?? []);
+            $modules[] = [
                 'module' => $className,
-                'schema' => $module->getConfigSchema(),
-                'current_settings' => $saved[$className] ?? [],
-                'is_active' => $saved[$className]['enabled'] ?? false
+                'is_active' => $config[$className]['enabled'] ?? false,
+                'schema' => $mod->getConfigSchema(),
+                'current_settings' => $config[$className] ?? []
             ];
         }
     }
-    echo json_encode($result);
+    header('Content-Type: application/json');
+    echo json_encode($modules);
     exit;
 }
 
-// 2. Сохранение настроек
-if ($uri == '/api/save' && $_SERVER['REQUEST_METHOD'] == 'POST') {
-    $data = json_decode(file_get_contents('php://input'), true);
-    if ($data) {
-        $all = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
-        $all[$data['module']] = $data['settings'];
-        if (!is_dir(dirname($configFile))) mkdir(dirname($configFile), 0777, true);
-        file_put_contents($configFile, json_encode($all, JSON_PRETTY_PRINT));
-        file_put_contents($baseDir . '/reload_signal', '1');
-        echo json_encode(['status' => 'success', 'message' => 'Настройки сохранены']);
-    }
-    exit;
-}
-
-// 3. Получение данных о системе (для модуля SystemInfo)
-if ($uri == '/api/sysinfo') {
-    $content = file_exists($cacheFile) ? file_get_contents($cacheFile) : "Ожидание данных от воркера...";
-    echo json_encode(['data' => $content]);
-    exit;
-}
-
-// 4. Обновление через Git (ветка main)
-if ($uri == '/api/update') {
-    $output = shell_exec('git reset --hard HEAD && git pull origin main 2>&1');
-    echo json_encode([
-        'status' => 'success',
-        'output' => $output ?: 'Git pull executed',
-        'message' => 'Система перезагрузится...'
-    ]);
-
-    // Используем скрипт, который мягко убивает процессы без конфликта дескрипторов
-    $killCmd = 'timeout /t 3 && taskkill /F /IM php.exe /T';
-    file_put_contents($baseDir . '/kill.bat', $killCmd);
+// API: Сохранение настроек
+if (strpos($uri, '/api/save') !== false) {
+    $input = json_decode(file_get_contents('php://input'), true);
+    $config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
     
-    // Запускаем bat-киллер отдельно от текущего процесса
-    pclose(popen('start /b "" cmd /c "' . $baseDir . '\\kill.bat"', "r"));
+    $config[$input['module']] = $input['settings'];
+    if (!is_dir($configDir)) mkdir($configDir);
+    file_put_contents($configFile, json_encode($config, JSON_PRETTY_PRINT));
+    
+    // Сигнал воркеру на перезагрузку конфига
+    file_put_contents($baseDir . '/reload_signal', '1');
+    
+    header('Content-Type: application/json');
+    echo json_encode(['message' => 'Настройки модуля ' . $input['module'] . ' сохранены']);
+    exit;
+}
+
+// API: Системная информация
+if (strpos($uri, '/api/sysinfo') !== false) {
+    $log = $baseDir . '/config/sysinfo.txt';
+    $data = file_exists($log) ? file_get_contents($log) : "Данные еще не собраны...";
+    header('Content-Type: application/json');
+    echo json_encode(['data' => $data]);
+    exit;
+}
+
+// API: Обновление через Git
+if (strpos($uri, '/api/update') !== false) {
+    $output = shell_exec('git pull 2>&1');
+    header('Content-Type: application/json');
+    echo json_encode(['message' => 'Обновление завершено', 'output' => $output]);
+    exit;
+}
+
+// Отдача HTML интерфейса (если зашли через браузер)
+if ($uri == '/' || $uri == '/index.html' || $uri == '/admin') {
+    header('Content-Type: text/html; charset=utf-8');
+    echo file_get_contents($baseDir . '/index.html');
     exit;
 }
