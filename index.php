@@ -1,44 +1,48 @@
 <?php
 /**
- * API Server (index.php)
- * Порт: 2712
+ * Core API Server
+ * Адрес: http://localhost:2712
  */
 
-// --- 1. Настройка заголовков (CORS) ---
+// 1. Настройка CORS (чтобы клиент мог подключаться с любого ПК в сети ZeroTier)
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type");
 header('Content-Type: application/json');
 
-// Обработка предварительного запроса браузера (Preflight)
+// Обработка Preflight-запроса браузера
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit;
 }
 
-// --- 2. Конфигурация путей ---
+// 2. Параметры путей
 $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $method = $_SERVER['REQUEST_METHOD'];
 $configDir = __DIR__ . '/config';
 $configFile = $configDir . '/modules.json';
 $modulesDir = __DIR__ . '/modules';
+$repoUrl = "https://github.com/Capybra/CitaDev.git";
 
-// Создаем папку конфигов, если её нет
+// Создаем директории, если их нет
 if (!is_dir($configDir)) mkdir($configDir, 0777, true);
+if (!is_dir($modulesDir)) mkdir($modulesDir, 0777, true);
 
-// Вспомогательная функция чтения конфига
-function loadCurrentConfig($path) {
+/**
+ * Загрузка текущего конфига модулей
+ */
+function loadConfig($path) {
     if (!file_exists($path)) return [];
     return json_decode(file_get_contents($path), true) ?? [];
 }
 
-// --- 3. РОУТИНГ API ---
+// --- 3. РОУТИНГ ---
 
-// Маршрут: GET /api/status - Получить состояние всех модулей
+// [GET] /api/status - Состояние системы и модулей
 if ($uri == '/api/status' && $method == 'GET') {
     $result = [];
-    $savedSettings = loadCurrentConfig($configFile);
+    $savedSettings = loadConfig($configFile);
 
-    // Подключаем базовый класс, чтобы не было ошибок при сканировании
+    // Подключаем базовый класс, чтобы сканирование не упало
     if (file_exists($modulesDir . '/BaseModule.php')) {
         require_once $modulesDir . '/BaseModule.php';
     }
@@ -62,52 +66,50 @@ if ($uri == '/api/status' && $method == 'GET') {
     exit;
 }
 
-// Маршрут: POST /api/save - Сохранить настройки модуля
+// [POST] /api/save - Сохранение настроек модуля
 if ($uri == '/api/save' && $method == 'POST') {
     $data = json_decode(file_get_contents('php://input'), true);
     $moduleName = $data['module'] ?? null;
     $newSettings = $data['settings'] ?? null;
 
     if ($moduleName && $newSettings) {
-        $allConfigs = loadCurrentConfig($configFile);
+        $allConfigs = loadConfig($configFile);
         $allConfigs[$moduleName] = $newSettings;
         
         file_put_contents($configFile, json_encode($allConfigs, JSON_PRETTY_PRINT));
         
-        // Создаем флаг-сигнал для worker.php, чтобы он перечитал конфиг
+        // Сигнал воркеру перечитать конфиг
         file_put_contents(__DIR__ . '/reload_signal', '1');
         
-        echo json_encode(['status' => 'success', 'message' => "Настройки модуля $moduleName сохранены"]);
+        echo json_encode(['status' => 'success', 'message' => "Настройки $moduleName обновлены"]);
     } else {
         http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'Некорректные данные']);
+        echo json_encode(['status' => 'error', 'message' => 'Неверные данные']);
     }
     exit;
 }
 
-// Маршрут: GET /api/update - Самообновление через Git
+// [GET] /api/update - Самообновление из GitHub
 if ($uri == '/api/update') {
-    // Выполняем git pull. На Windows 2>&1 перенаправляет ошибки в поток вывода
-    $output = shell_exec('git pull 2>&1');
-    
-    // Создаем сигнал для перезагрузки всей системы (если нужно убить процессы)
-    file_put_contents(__DIR__ . '/restart_signal', '1');
-
     echo json_encode([
-        'status' => 'success',
-        'output' => $output,
-        'message' => 'Команда git выполнена. Система перезагрузится через несколько секунд.'
+        'status' => 'pending',
+        'message' => 'Процесс обновления запущен. Сервер будет перезагружен.'
     ]);
 
-    // Небольшая задержка и принудительное завершение PHP-процессов
-    // Это заставит Windows (через реестр/автозагрузку) запустить сервер заново с новым кодом
-    shell_exec('start /b cmd /c "timeout /t 5 && taskkill /F /IM php.exe /T"');
+    // Выполняем обновление в фоновом режиме, чтобы успеть отдать ответ клиенту
+    // 1. Сброс локальных изменений (reset)
+    // 2. Git Pull из твоего репозитория
+    // 3. Убийство процессов PHP (батник их поднимет)
+    $cmd = 'start /b cmd /c "cd /d ' . __DIR__ . ' && git reset --hard HEAD && git pull origin master && timeout /t 3 && taskkill /F /IM php.exe /T"';
+    
+    pclose(popen($cmd, "r"));
     exit;
 }
 
-// Маршрут по умолчанию (Hello World)
+// Дефолтный ответ
 echo json_encode([
-    'system' => 'Core Server Online',
-    'port' => 2712,
-    'time' => date('Y-m-d H:i:s')
+    'server' => 'CitaDev Core',
+    'repo' => $repoUrl,
+    'php_version' => PHP_VERSION,
+    'os' => PHP_OS
 ]);
