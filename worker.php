@@ -1,42 +1,45 @@
 <?php
 /**
- * CitaDev Worker Core + Debug Logger
+ * CitaDev Worker Core
  */
 $baseDir = __DIR__;
 $debugLog = $baseDir . DIRECTORY_SEPARATOR . 'worker_debug.log';
 
-// Функция логирования
 function logWorker($message) {
     global $debugLog;
-    $time = date('Y-m-d H:i:s');
-    $entry = "[$time] $message" . PHP_EOL;
-    echo $entry; // Для отображения в консоли debug_worker.bat
+    $entry = "[" . date('Y-m-d H:i:s') . "] $message" . PHP_EOL;
+    echo $entry;
     file_put_contents($debugLog, $entry, FILE_APPEND);
 }
 
-logWorker("--- WORKER STARTUP ---");
+logWorker("--- WORKER RELOADED ---");
 
-// Настройка окружения
+// PATH
 $localBin = $baseDir . '\php;' . $baseDir . '\git\bin;';
 putenv("PATH=" . $localBin . getenv("PATH"));
 
-// Папки
+// СИНХРОНИЗИРОВАНО: Путь и Имя файла
 $configDir = $baseDir . DIRECTORY_SEPARATOR . 'config';
-$sysinfoPath = $configDir . DIRECTORY_SEPARATOR . 'sysinfo.txt';
-if (!is_dir($configDir)) mkdir($configDir);
+$sysinfoPath = $configDir . DIRECTORY_SEPARATOR . 'sys_info_cache.txt';
+
+if (!is_dir($configDir)) {
+    mkdir($configDir, 0777, true);
+    logWorker("Config dir created manually.");
+}
 
 require_once $baseDir . '/modules/BaseModule.php';
 $configFile = $configDir . DIRECTORY_SEPARATOR . 'modules.json';
 
 while (true) {
-    logWorker("Starting new cycle...");
+    logWorker("New Cycle...");
     
-    // Загрузка свежего конфига
-    $config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
-    
-    // Поиск и запуск модулей
-    $moduleFiles = glob($baseDir . '/modules/*.php');
-    foreach ($moduleFiles as $filename) {
+    if (file_exists($configFile)) {
+        $config = json_decode(file_get_contents($configFile), true);
+    } else {
+        $config = [];
+    }
+
+    foreach (glob($baseDir . '/modules/*.php') as $filename) {
         if (basename($filename) === 'BaseModule.php') continue;
         
         require_once $filename;
@@ -47,32 +50,25 @@ while (true) {
             $module = new $className($modConfig);
             
             if ($module->isEnabled()) {
-                logWorker("Running module: $className");
-                try {
-                    $module->run();
-                    
-                    // Проверка результата для SystemInfo
-                    if ($className === 'SystemInfo') {
-                        if (file_exists($sysinfoPath)) {
-                            $size = filesize($sysinfoPath);
-                            logWorker("SystemInfo: File updated, size: $size bytes");
-                        } else {
-                            logWorker("SystemInfo ERROR: File sysinfo.txt was NOT created!");
-                        }
+                logWorker("Running: $className");
+                $module->run();
+                
+                // Проверка конкретно для SystemInfo
+                if ($className === 'SystemInfo') {
+                    if (file_exists($sysinfoPath)) {
+                        logWorker("SUCCESS: File exists. Size: " . filesize($sysinfoPath));
+                    } else {
+                        logWorker("CRITICAL: Module SystemInfo finished but $sysinfoPath NOT FOUND!");
                     }
-                } catch (Exception $e) {
-                    logWorker("CRITICAL ERROR in $className: " . $e->getMessage());
                 }
             }
         }
     }
 
-    // Сигнал перезагрузки
     if (file_exists($baseDir . '/reload_signal')) {
-        logWorker("Reload signal received.");
         unlink($baseDir . '/reload_signal');
+        logWorker("Config reloaded by signal.");
     }
 
-    logWorker("Cycle finished. Sleeping 10s...");
     sleep(10);
 }
