@@ -1,37 +1,53 @@
 <?php
-// worker.php
-$phpPath = "C:\php\php.exe"; // Тот же путь, что в bat-файле
-echo "Worker started...\n";
+/**
+ * CitaDev Worker Core
+ */
+set_time_limit(0); // Убираем лимит времени выполнения
+echo "[".date('H:i:s')."] Worker Core Started...\n";
 
-$processes = [];
+$baseDir = __DIR__;
+$modulesDir = $baseDir . '/modules';
+$configFile = $baseDir . '/config/modules.json';
+
+// Подгружаем базовый класс один раз
+if (file_exists($modulesDir . '/BaseModule.php')) {
+    require_once $modulesDir . '/BaseModule.php';
+}
 
 while (true) {
-    $configFile = __DIR__ . '/config/modules.json';
-    $configs = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
+    // 1. Проверка сигнала на обновление настроек
+    if (file_exists($baseDir . '/reload_signal')) {
+        echo "[INFO] Настройки изменены клиентом. Применяю...\n";
+        unlink($baseDir . '/reload_signal');
+    }
 
-    foreach ($configs as $moduleName => $settings) {
-        if (!($settings['enabled'] ?? false)) continue;
+    // 2. Чтение конфигурации
+    $config = file_exists($configFile) ? json_decode(file_get_contents($configFile), true) : [];
 
-        // Если процесс модуля уже запущен - пропускаем, если нет - стартуем
-        // Для простоты в V1: просто запускаем скрипт-обертку для модуля
-        // Но сейчас реализуем через инклюд, раз это "легкие" задачи:
-        
-        $moduleFile = __DIR__ . "/modules/{$moduleName}.php";
-        if (file_exists($moduleFile)) {
-            require_once $moduleFile;
-            $module = new $moduleName();
-            $module->setConfig($settings);
-            
-            echo "Executing: $moduleName...\n";
-            $module->run(); // Выполняем одну итерацию логики модуля
+    // 3. Запуск активных модулей
+    foreach (glob($modulesDir . '/*.php') as $file) {
+        $className = basename($file, '.php');
+        if ($className === 'BaseModule') continue;
+
+        // Проверяем, включен ли модуль в настройках
+        if (isset($config[$className]['enabled']) && $config[$className]['enabled'] == true) {
+            try {
+                require_once $file;
+                if (class_exists($className)) {
+                    $module = new $className();
+                    $module->setConfig($config[$className]);
+                    
+                    // Выполнение задачи модуля
+                    $module->run(); 
+                }
+            } catch (Error $e) {
+                echo "[FATAL ERROR] В модуле $className: " . $e->getMessage() . "\n";
+            } catch (Exception $e) {
+                echo "[ERROR] В модуле $className: " . $e->getMessage() . "\n";
+            }
         }
     }
 
-    // Проверка самообновления (если пришел сигнал из API)
-    if (file_exists(__DIR__ . '/reload_signal')) {
-        echo "Reloading configurations...\n";
-        unlink(__DIR__ . '/reload_signal');
-    }
-
-    sleep(2); // Задержка цикла ядра
+    // Пауза 2 секунды, чтобы не перегружать CPU
+    sleep(2);
 }
