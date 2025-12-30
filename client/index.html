@@ -4,127 +4,168 @@
     <meta charset="UTF-8">
     <title>CitaDev Panel</title>
     <style>
-        body { font-family: 'Segoe UI', sans-serif; background: #121212; color: #e0e0e0; padding: 20px; }
-        .card { background: #1e1e1e; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #333; }
-        .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 6px; color: white; font-weight: bold; margin-right: 10px; transition: 0.3s; }
-        .btn:hover { opacity: 0.8; }
-        .btn-save { background: #2e7d32; width: 100%; margin-top: 15px; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #e0e0e0; padding: 20px; margin: 0; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 25px; }
+        .card { background: #1e1e1e; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #333; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .btn { padding: 10px 20px; cursor: pointer; border: none; border-radius: 6px; color: white; font-weight: bold; transition: background 0.3s, transform 0.1s; display: inline-block; }
+        .btn:active { transform: scale(0.98); }
+        .btn-save { background: #2e7d32; width: 100%; margin-top: 15px; font-size: 16px; }
+        .btn-save:hover { background: #388e3c; }
         .btn-update { background: #1565c0; }
-        .btn-cfg { background: #444; }
-        .sys-info { background: #000; color: #00ff41; padding: 15px; font-family: monospace; white-space: pre-wrap; margin-top: 15px; border-radius: 4px; border: 1px solid #004d1a; min-height: 50px; }
-        input[type="text"] { width: 100%; padding: 8px; background: #2d2d2d; color: white; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; }
-        h3 { margin-top: 0; color: #90caf9; }
+        .btn-update:hover { background: #1e88e5; }
+        .btn-cfg { background: #424242; }
+        .sys-info-title { color: #4caf50; font-weight: bold; margin-bottom: 10px; display: block; }
+        .sys-info-box { background: #000; color: #00ff41; padding: 15px; font-family: 'Consolas', 'Courier New', monospace; white-space: pre-wrap; border-radius: 6px; border: 1px solid #004d1a; font-size: 13px; line-height: 1.5; }
+        input[type="text"] { width: 100%; padding: 10px; background: #2d2d2d; color: white; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; margin-top: 5px; }
+        input[type="text"]:focus { border-color: #90caf9; outline: none; }
+        label { font-size: 13px; color: #bbb; }
+        h3 { margin-top: 0; color: #90caf9; border-bottom: 1px solid #333; padding-bottom: 10px; }
+        .status-bar { font-size: 12px; color: #666; margin-top: 5px; }
     </style>
 </head>
 <body>
 
-    <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h1>CitaDev Control</h1>
+    <div class="header">
         <div>
-            <button class="btn btn-cfg" onclick="changeServerIp()">⚙️ IP сервера</button>
-            <button class="btn btn-update" id="git-btn" onclick="updateGit()">🔄 Git Pull</button>
+            <h1 style="margin:0;">CitaDev Control Panel</h1>
+            <div id="status-text" class="status-bar">Подключение к API...</div>
+        </div>
+        <div>
+            <button class="btn btn-cfg" onclick="changeServerIp()">⚙️ Сменить IP</button>
+            <button class="btn btn-update" id="btnUpdate" onclick="updateGit()">🔄 Git Pull</button>
         </div>
     </div>
     
-    <div id="status-bar" style="margin-bottom: 20px; color: #888; font-size: 13px;"></div>
-    <div id="modules-container">Загрузка...</div>
+    <div id="modules-container">Загрузка конфигурации модулей...</div>
 
     <script>
-        let serverIp = window.location.hostname;
-        if (!serverIp || serverIp === 'localhost' || serverIp === '127.0.0.1') {
-            serverIp = localStorage.getItem('last_known_server_ip') || '10.147.17.219';
+        // ЛОГИКА ОПРЕДЕЛЕНИЯ IP СЕРВЕРА
+        let currentIp = window.location.hostname;
+        if (!currentIp || currentIp === 'localhost' || currentIp === '127.0.0.1') {
+            currentIp = localStorage.getItem('citadev_server_ip') || '10.147.17.219';
         }
-        const API_URL = `http://${serverIp}:2712/api`;
-        document.getElementById('status-bar').innerText = `Подключено к: ${API_URL}`;
+        const API_URL = `http://${currentIp}:2712/api`;
+        document.getElementById('status-text').innerText = `Адрес сервера: ${API_URL}`;
 
+        // ЗАГРУЗКА МОДУЛЕЙ
         async function fetchModules() {
             try {
-                const res = await fetch(`${API_URL}/status`);
-                const modules = await res.json();
+                const response = await fetch(`${API_URL}/status`);
+                const modules = await response.json();
                 const container = document.getElementById('modules-container');
                 container.innerHTML = '';
 
                 modules.forEach(m => {
                     const card = document.createElement('div');
                     card.className = 'card';
-                    let fieldsHtml = `<h3>${m.module}</h3>
-                        <label><input type="checkbox" id="enable-${m.module}" ${m.is_active ? 'checked' : ''}> Активен</label><br><br>`;
-
-                    for (let key in m.schema) {
-                        const field = m.schema[key];
-                        const val = m.current_settings[key] || field.default;
-                        fieldsHtml += `<label style="font-size:11px; color:#888;">${field.label}</label><br>
-                                       <input type="text" id="input-${m.module}-${key}" value="${val}"><br><br>`;
-                    }
-
-                    if (m.module === 'SystemInfo') {
-                        fieldsHtml += `<div class="sys-info" id="sys-info-box">Загрузка системных данных...</div>`;
-                    }
                     
-                    fieldsHtml += `<button class="btn btn-save" onclick="saveSettings('${m.module}', '${Object.keys(m.schema).join(',')}')">Сохранить настройки</button>`;
-                    card.innerHTML = fieldsHtml;
+                    let html = `<h3>${m.module}</h3>`;
+                    html += `<label><input type="checkbox" id="chk-${m.module}" ${m.is_active ? 'checked' : ''}> Включить модуль</label><br><br>`;
+
+                    // Генерация полей из схемы модуля
+                    const keys = [];
+                    for (let key in m.schema) {
+                        keys.push(key);
+                        const field = m.schema[key];
+                        const currentVal = m.current_settings[key] || field.default;
+                        html += `<div style="margin-bottom:12px;">
+                                    <label>${field.label}:</label>
+                                    <input type="text" id="input-${m.module}-${key}" value="${currentVal}">
+                                 </div>`;
+                    }
+
+                    // Если это системный модуль, добавляем окно вывода
+                    if (m.module === 'SystemInfo') {
+                        html += `<span class="sys-info-title">Данные системы:</span>`;
+                        html += `<div class="sys-info-box" id="sys-info-display">Получение данных...</div>`;
+                    }
+
+                    html += `<button class="btn btn-save" onclick="saveModuleSettings('${m.module}', '${keys.join(',')}')">Применить настройки модуля</button>`;
+                    card.innerHTML = html;
                     container.appendChild(card);
                 });
-            } catch (e) {
-                document.getElementById('modules-container').innerHTML = `<h2 style="color:#ff5252">Ошибка связи с сервером ${serverIp}</h2>`;
+            } catch (error) {
+                document.getElementById('modules-container').innerHTML = 
+                    `<div class="card" style="border-color:#f44336">
+                        <h2 style="color:#f44336">Ошибка связи!</h2>
+                        <p>Сервер ${currentIp} не отвечает. Убедитесь, что:</p>
+                        <ul>
+                            <li>ZeroTier подключен и IP верный</li>
+                            <li>В настройках прокси (Squid) добавлен адрес ${currentIp} в исключения</li>
+                            <li>Брандмауэр на сервере разрешает порт 2712</li>
+                        </ul>
+                     </div>`;
             }
         }
 
-        async function saveSettings(mod, keysStr) {
-            const keys = keysStr.split(',');
-            const settings = { enabled: document.getElementById(`enable-${mod}`).checked };
-            keys.forEach(k => { if(k) settings[k] = document.getElementById(`input-${mod}-${k}`).value; });
+        // СОХРАНЕНИЕ НАСТРОЕК
+        async function saveModuleSettings(modName, keysString) {
+            const keys = keysString.split(',').filter(k => k !== '');
+            const settings = {
+                enabled: document.getElementById(`chk-${modName}`).checked
+            };
+            
+            keys.forEach(k => {
+                settings[k] = document.getElementById(`input-${modName}-${k}`).value;
+            });
 
             try {
-                const res = await fetch(`${API_URL}/save`, {
+                const response = await fetch(`${API_URL}/save`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ module: mod, settings: settings })
+                    body: JSON.stringify({ module: modName, settings: settings })
                 });
-                const data = await res.json();
-                alert(data.message);
+                const result = await response.json();
+                alert(result.message);
                 fetchModules();
-            } catch (e) { alert('Ошибка сохранения!'); }
+            } catch (e) {
+                alert('Не удалось сохранить настройки!');
+            }
         }
 
+        // ОБНОВЛЕНИЕ ЧЕРЕЗ GIT
         async function updateGit() {
-            if(!confirm("Запустить git pull?")) return;
-            const btn = document.getElementById('git-btn');
-            btn.innerText = "⏳ Ожидайте...";
+            if (!confirm("Вы уверены, что хотите обновить файлы сервера из Git?")) return;
+            const btn = document.getElementById('btnUpdate');
             btn.disabled = true;
+            btn.innerText = "⏳ Обновление...";
 
             try {
                 const res = await fetch(`${API_URL}/update`);
                 const data = await res.json();
-                alert("Статус: " + data.status + "\n\nВывод Git:\n" + data.output);
+                alert("Статус: " + data.status + "\n\nОтвет сервера:\n" + data.output);
             } catch (e) {
-                alert("Ошибка запроса! Проверьте консоль F12.");
+                alert("Ошибка при выполнении запроса на обновление.");
             } finally {
-                btn.innerText = "🔄 Git Pull";
                 btn.disabled = false;
+                btn.innerText = "🔄 Git Pull";
+                location.reload();
             }
         }
 
+        // СМЕНА IP
         function changeServerIp() {
-            const ip = prompt("IP сервера ZeroTier:", serverIp);
-            if (ip) { 
-                localStorage.setItem('last_known_server_ip', ip); 
-                location.reload(); 
+            const newIp = prompt("Введите IP адрес сервера ZeroTier:", currentIp);
+            if (newIp) {
+                localStorage.setItem('citadev_server_ip', newIp);
+                location.reload();
             }
         }
 
-        async function refreshSys() {
-            const box = document.getElementById('sys-info-box');
-            if (!box) return;
+        // ФОНОВОЕ ОБНОВЛЕНИЕ СИСТЕМНОЙ ИНФОРМАЦИИ
+        async function refreshSystemData() {
+            const display = document.getElementById('sys-info-display');
+            if (!display) return;
             try {
                 const res = await fetch(`${API_URL}/sysinfo`);
                 const json = await res.json();
-                box.innerText = json.data;
-            } catch(e) {}
+                display.innerText = json.data;
+            } catch (e) {}
         }
 
+        // СТАРТ
         fetchModules();
-        setInterval(refreshSys, 4000);
+        setInterval(refreshSystemData, 3000);
     </script>
 </body>
 </html>
