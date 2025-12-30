@@ -4,28 +4,36 @@
     <meta charset="UTF-8">
     <title>CitaDev Control Panel</title>
     <style>
-        body { font-family: sans-serif; background: #1a1a1a; color: #eee; padding: 20px; }
-        .card { background: #2a2a2a; border-radius: 8px; padding: 15px; margin-bottom: 15px; border: 1px solid #444; }
-        .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 4px; color: white; }
-        .btn-save { background: #28a745; }
-        .btn-update { background: #007bff; margin-bottom: 20px; }
-        .sys-info { background: #000; color: #0f0; padding: 10px; font-family: monospace; white-space: pre-wrap; margin-top: 10px; border: 1px dashed #0f0; }
-        input, select { margin: 5px 0; padding: 5px; background: #333; color: white; border: 1px solid #555; display: block; }
-        label { font-size: 0.9em; color: #bbb; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #e0e0e0; padding: 20px; }
+        .card { background: #1e1e1e; border-radius: 12px; padding: 20px; margin-bottom: 20px; border: 1px solid #333; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        .btn { padding: 12px 20px; cursor: pointer; border: none; border-radius: 6px; color: white; font-weight: bold; transition: 0.3s; }
+        .btn-save { background: #2e7d32; width: 100%; margin-top: 15px; }
+        .btn-save:hover { background: #388e3c; }
+        .btn-update { background: #1565c0; margin-bottom: 20px; }
+        .sys-info { background: #000; color: #00ff41; padding: 15px; font-family: 'Consolas', monospace; white-space: pre-wrap; margin-top: 15px; border-radius: 4px; border: 1px solid #004411; }
+        input[type="text"] { width: 100%; padding: 10px; background: #2d2d2d; color: white; border: 1px solid #444; border-radius: 4px; box-sizing: border-box; }
+        .module-header { display: flex; justify-content: space-between; align-items: center; }
+        .status-badge { font-size: 0.8em; padding: 4px 8px; border-radius: 4px; background: #444; }
+        .active { background: #2e7d32; }
     </style>
 </head>
 <body>
 
     <h1>CitaDev Dashboard</h1>
-    
-    <button class="btn btn-update" onclick="updateGit()">Обновить систему (Git Pull)</button>
+    <button class="btn btn-update" onclick="updateGit()">🔄 Обновить систему (Git Pull)</button>
 
     <div id="modules-container">Загрузка модулей...</div>
 
     <script>
-        const API_URL = 'http://localhost:2712/api';
+        // АВТОМАТИЧЕСКОЕ ОПРЕДЕЛЕНИЕ АДРЕСА API
+        // Если открыто через localhost -> localhost
+        // Если открыто через ZeroTier IP -> ZeroTier IP
+        // Если открыто как файл -> Используем твой текущий ZeroTier IP
+        const currentHost = window.location.hostname || '10.147.17.129';
+        const API_URL = `http://${currentHost}:2712/api`;
 
-        // Загрузка модулей и отрисовка форм
+        console.log("CitaDev: Подключение к API по адресу", API_URL);
+
         async function fetchModules() {
             try {
                 const res = await fetch(`${API_URL}/status`);
@@ -37,43 +45,48 @@
                     const card = document.createElement('div');
                     card.className = 'card';
                     
-                    let fieldsHtml = `<h3>${m.module}</h3>`;
-                    
-                    // Чекбокс включения
-                    fieldsHtml += `
+                    let fieldsHtml = `
+                        <div class="module-header">
+                            <h3>${m.module}</h3>
+                            <span class="status-badge ${m.is_active ? 'active' : ''}">${m.is_active ? 'АКТИВЕН' : 'ВЫКЛЮЧЕН'}</span>
+                        </div>
                         <label>
                             <input type="checkbox" id="enable-${m.module}" ${m.is_active ? 'checked' : ''}> 
                             Включить модуль
-                        </label><hr>`;
+                        </label><hr style="border:0; border-top:1px solid #333; margin: 15px 0;">`;
 
-                    // Генерация полей из схемы
                     for (let key in m.schema) {
                         const field = m.schema[key];
                         const val = m.current_settings[key] || field.default;
                         fieldsHtml += `
-                            <label>${field.label}</label>
-                            <input type="${field.type}" id="input-${m.module}-${key}" value="${val}">
-                        `;
+                            <div style="margin-bottom:10px;">
+                                <label style="display:block; margin-bottom:5px; font-size:0.9em; color:#bbb;">${field.label}</label>
+                                <input type="${field.type}" id="input-${m.module}-${key}" value="${val}">
+                            </div>`;
                     }
 
-                    // Если это модуль SystemInfo, добавляем окно вывода
                     if (m.module === 'SystemInfo') {
-                        fieldsHtml += `<div class="sys-info" id="sys-info-display">Загрузка данных о железе...</div>`;
+                        fieldsHtml += `<div class="sys-info" id="sys-info-display">Сбор данных о железе...</div>`;
                     }
 
                     fieldsHtml += `
-                        <br><button class="btn btn-save" onclick="saveSettings('${m.module}', '${Object.keys(m.schema).join(',')}')">Сохранить</button>
+                        <button class="btn btn-save" onclick="saveSettings('${m.module}', '${Object.keys(m.schema).join(',')}')">💾 Сохранить настройки</button>
                     `;
                     
                     card.innerHTML = fieldsHtml;
                     container.appendChild(card);
                 });
             } catch (e) {
-                document.getElementById('modules-container').innerText = 'Ошибка соединения с API (запустите start.bat)';
+                document.getElementById('modules-container').innerHTML = `
+                    <div class="card" style="border-color: #f44336;">
+                        <h3 style="color: #f44336;">Ошибка соединения!</h3>
+                        <p>Не удалось подключиться к API по адресу: <b>${API_URL}</b></p>
+                        <p>1. Убедитесь, что запущен <b>start.bat</b></p>
+                        <p>2. Проверьте, что <b>ZeroTier</b> подключен.</p>
+                    </div>`;
             }
         }
 
-        // Сохранение
         async function saveSettings(moduleName, keysStr) {
             const keys = keysStr ? keysStr.split(',') : [];
             const settings = { enabled: document.getElementById(`enable-${moduleName}`).checked };
@@ -82,27 +95,27 @@
                 if(k) settings[k] = document.getElementById(`input-${moduleName}-${k}`).value;
             });
 
-            const res = await fetch(`${API_URL}/save`, {
-                method: 'POST',
-                body: JSON.stringify({ module: moduleName, settings: settings })
-            });
-            const data = await res.json();
-            alert(data.message);
+            try {
+                const res = await fetch(`${API_URL}/save`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ module: moduleName, settings: settings })
+                });
+                const data = await res.json();
+                alert(data.message);
+                fetchModules(); // Обновить интерфейс
+            } catch (e) { alert("Ошибка при сохранении!"); }
         }
 
-        // Обновление Git
         async function updateGit() {
-            if (!confirm('Выполнить обновление и перезагрузить сервер?')) return;
+            if (!confirm('Выполнить обновление из GitHub и перезагрузить сервер?')) return;
             try {
                 const res = await fetch(`${API_URL}/update`);
                 const data = await res.json();
-                alert(`Git: ${data.output}\n${data.message}`);
-            } catch (e) {
-                alert('Запрос отправлен. Сервер перезагружается...');
-            }
+                alert(`Ответ Git: ${data.output}\n${data.message}`);
+            } catch (e) { alert('Обновление запущено. Перезагрузка...'); }
         }
 
-        // Постоянное обновление инфы о системе (раз в 3 сек)
         async function refreshSysInfo() {
             const display = document.getElementById('sys-info-display');
             if (!display) return;
@@ -114,7 +127,7 @@
         }
 
         fetchModules();
-        setInterval(refreshSysInfo, 3000);
+        setInterval(refreshSysInfo, 3000); // Обновлять инфу о железе каждые 3 сек
     </script>
 </body>
 </html>

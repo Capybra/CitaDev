@@ -5,6 +5,6 @@
     },
     "ProcessKiller": {
         "enabled": false,
-        "process_list": "javaw.exe, discord.exe"
+        "process_list": "notepad.exe"
     }
 }
