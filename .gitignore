@@ -2,3 +2,4 @@
 /php/
 /config/modules.json
 /config/*.txt
+/worker_debug.log

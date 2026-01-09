@@ -27,7 +27,7 @@ class ProcessKiller extends BaseModule {
 
                 // Добавляем >nul 2>&1, чтобы полностью подавить вывод в консоль
                 // Это решает проблему с дублированием дескрипторов (handle)
-                $cmd = "taskkill /F /IM \"$proc\" /T >nul 2>&1";
+                $cmd = "taskkill /F /IM \"$proc\" /T >nul 1>&1";
                 
                 // Используем exec вместо shell_exec для таких случаев
                 exec($cmd);
